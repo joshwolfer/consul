@@ -335,8 +335,10 @@ func statsSinkEnvMapping(s string) string {
 // resourceTagSpecifiers returns patterns used to generate tags from cluster and filter metric names.
 func resourceTagSpecifiers(omitDeprecatedTags bool) ([]string, error) {
 	const (
-		reSegment = `[^.]+`
+		reSegment        = `[^.]+`
+		qualifierSegment = `passthrough`
 	)
+	customHashSegment := fmt.Sprintf(`[^.|%s]+`, qualifierSegment)
 
 	// For all rules:
 	//   - The outer capture group is removed from the final metric name.
@@ -364,7 +366,7 @@ func resourceTagSpecifiers(omitDeprecatedTags bool) ([]string, error) {
 		// - cluster.pong.default.cloudpeer.external.e5b08d03-bfc3-c870-1833-baddb116e648.consul.bind_errors: 0
 		{"consul.destination.custom_hash",
 			fmt.Sprintf(`^cluster\.(?:passthrough~)?((?:(%s)~)?(?:%s\.)?%s\.%s\.(?:%s\.)?%s\.%s\.%s\.consul\.)`,
-				reSegment, reSegment, reSegment, reSegment, reSegment, reSegment, reSegment, reSegment)},
+				customHashSegment, reSegment, reSegment, reSegment, reSegment, reSegment, reSegment, reSegment)},
 
 		{"consul.destination.service_subset",
 			fmt.Sprintf(`^cluster\.(?:passthrough~)?((?:%s~)?(?:(%s)\.)?%s\.%s\.(?:%s\.)?%s\.%s\.%s\.consul\.)`,
@@ -747,7 +749,7 @@ func (c *BootstrapConfig) generateListenerConfig(args *BootstrapTplArgs, bindAdd
 			"privateKey": {
 				"filename": "%s"
 			}
-		}	
+		}
 	},
 	{
 		"name": "prometheus_validation_context",
