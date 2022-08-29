@@ -33,34 +33,31 @@ module.exports = function(defaults, $ = process.env) {
     'consul-peerings',
     'consul-partitions',
     'consul-nspaces',
-    'consul-hcp'
+    'consul-hcp',
   ].map(item => {
     return {
       name: item,
-      path: path.dirname(require.resolve(`${item}/package.json`))
+      path: path.dirname(require.resolve(`${item}/package.json`)),
     };
   });
 
   const babel = {
-    plugins: [
-      '@babel/plugin-proposal-object-rest-spread',
-    ],
+    plugins: ['@babel/plugin-proposal-object-rest-spread'],
     sourceMaps: sourcemaps ? 'inline' : false,
-  }
+  };
 
   // setup up different build configuration depending on environment
-  if(!['test'].includes(env)) {
+  if (!['test'].includes(env)) {
     // exclude any component/pageobject.js files from anything but test
     excludeFiles = excludeFiles.concat([
       'components/**/pageobject.js',
       'components/**/test-support.js',
       'components/**/*.test-support.js',
       'components/**/*.test.js',
-    ])
+    ]);
   }
 
-
-  if(['test', 'production'].includes(env)) {
+  if (['test', 'production'].includes(env)) {
     // exclude our debug initializer, route and template
     excludeFiles = excludeFiles.concat([
       'instance-initializers/debug.js',
@@ -69,66 +66,82 @@ module.exports = function(defaults, $ = process.env) {
       'modifiers/**/*-debug.js',
       'services/**/*-debug.js',
       'templates/debug.hbs',
-      'components/debug/**/*.*'
-    ])
+      'components/debug/**/*.*',
+    ]);
     // inspect *-debug configuration files for files to exclude
-    excludeFiles = apps.reduce(
-      (prev, item) => {
-        return ['services', 'routes'].reduce(
-          (prev, type) => {
-            const path = `${item.path}/vendor/${item.name}/${type}-debug.js`;
-            if(exists(path)) {
-              return Object.entries(JSON.parse(require(path)[type])).reduce(
-                (prev, [key, definition]) => {
-                  if(typeof definition.class !== 'undefined') {
-                    return prev.concat(`${definition.class.replace(`${item.name}/`, '')}.js`);
-                  }
-                  return prev;
-                },
-                prev
-              );
-            }
-            return prev;
-          },
-          prev
-        )
-      },
-      excludeFiles
-    );
+    excludeFiles = apps.reduce((prev, item) => {
+      return ['services', 'routes'].reduce((prev, type) => {
+        const path = `${item.path}/vendor/${item.name}/${type}-debug.js`;
+        if (exists(path)) {
+          return Object.entries(JSON.parse(require(path)[type])).reduce(
+            (prev, [key, definition]) => {
+              if (typeof definition.class !== 'undefined') {
+                return prev.concat(`${definition.class.replace(`${item.name}/`, '')}.js`);
+              }
+              return prev;
+            },
+            prev
+          );
+        }
+        return prev;
+      }, prev);
+    }, excludeFiles);
     // exclude any debug like addons from production or test environments
     addons.blacklist = [
       // exclude docfy
-      '@docfy/ember'
+      '@docfy/ember',
     ];
   }
 
-  if(['production'].includes(env)) {
+  if (['production'].includes(env)) {
     // everything apart from production is 'debug', including test
     // which means this and everything it affects is never tested
-    babel.plugins.push(
-      ['strip-function-call', {'strip': ['Ember.runInDebug']}]
-    )
+    babel.plugins.push(['strip-function-call', { strip: ['Ember.runInDebug'] }]);
   }
 
   //
-  (
-    function(apps) {
-      trees.app = mergeTrees([
-        new Funnel('app', { exclude: excludeFiles })
+  (function(apps) {
+    trees.app = mergeTrees(
+      [new Funnel('app', { exclude: excludeFiles })].concat(
+        apps
+          .filter(item => exists(`${item.path}/app`))
+          .map(item => new Funnel(`${item.path}/app`, { exclude: excludeFiles }))
+      ),
+      {
+        overwrite: true,
+      }
+    );
+    // we switched to postcss - because ember-cli-postcss only operates on the
+    // styles tree we need to make sure we write the css files from "sub-apps"
+    // into `app/styles` manually and prefix them with `consul-ui` because that
+    // is what the codebase expects from before when using ember-cli-sass.
+    trees.styles = mergeTrees(
+      [
+        new Funnel('app/styles', { include: ['**/*.{scss,css}'] }),
+        new Funnel('app', { include: ['components/**/*.{scss,css}'], destDir: 'consul-ui' }),
       ].concat(
-        apps.filter(item => exists(`${item.path}/app`)).map(item => new Funnel(`${item.path}/app`, {exclude: excludeFiles}))
-      ), {
-        overwrite: true
-      });
-      trees.vendor = mergeTrees([
-        new Funnel('vendor'),
-      ].concat(
-        apps.map(item => new Funnel(`${item.path}/vendor`))
-      ));
-    }
-  // consul-ui will eventually be a separate app just like the others
-  // at which point we can remove this filter/extra scope
-  )(apps.filter(item => item.name !== 'consul-ui'));
+        apps
+          .filter(item => exists(`${item.path}/app`))
+          .map(
+            item =>
+              new Funnel(`${item.path}/app`, {
+                include: ['**/*.{scss,css}'],
+                destDir: 'consul-ui',
+              })
+          )
+      ),
+      {
+        overwrite: true,
+      }
+    );
+    trees.vendor = mergeTrees(
+      [new Funnel('vendor')].concat(apps.map(item => new Funnel(`${item.path}/vendor`)))
+    );
+  })(
+    // consul-ui will eventually be a separate app just like the others
+    // at which point we can remove this filter/extra scope
+    apps.filter(item => item.name !== 'consul-ui')
+  );
   //
 
   const app = new EmberApp(
@@ -142,8 +155,26 @@ module.exports = function(defaults, $ = process.env) {
       'ember-cli-babel': {
         includePolyfill: true,
       },
+      postcssOptions: {
+        compile: {
+          extension: 'scss',
+          plugins: [
+            {
+              module: require('@csstools/postcss-sass'),
+            },
+          ],
+        },
+      },
       'ember-cli-string-helpers': {
-        only: ['capitalize', 'lowercase', 'truncate', 'uppercase', 'humanize', 'titleize', 'classify'],
+        only: [
+          'capitalize',
+          'lowercase',
+          'truncate',
+          'uppercase',
+          'humanize',
+          'titleize',
+          'classify',
+        ],
       },
       'ember-cli-math-helpers': {
         only: ['div'],
@@ -177,8 +208,8 @@ module.exports = function(defaults, $ = process.env) {
     }
   );
   const build = function(path, options) {
-    const {root, ...rest} = options;
-    if(exists(`${root}/${path}`)) {
+    const { root, ...rest } = options;
+    if (exists(`${root}/${path}`)) {
       app.import(path, rest);
     }
   };
@@ -191,7 +222,7 @@ module.exports = function(defaults, $ = process.env) {
       root: item.path,
       outputFile: `assets/${item.name}/services.js`,
     });
-    if(devlike) {
+    if (devlike) {
       build(`vendor/${item.name}/routes-debug.js`, {
         root: item.path,
         outputFile: `assets/${item.name}/routes-debug.js`,
