@@ -219,6 +219,14 @@ func TestListenersFromSnapshot(t *testing.T) {
 			},
 		},
 		{
+			name: "custom-trace-listener",
+			create: func(t testinf.T) *proxycfg.ConfigSnapshot {
+				return proxycfg.TestConfigSnapshot(t, func(ns *structs.NodeService) {
+					ns.Proxy.Config["envoy_listener_tracing_json"] = customTraceJSON(t)
+				}, nil)
+			},
+		},
+		{
 			name: "custom-public-listener-http",
 			create: func(t testinf.T) *proxycfg.ConfigSnapshot {
 				return proxycfg.TestConfigSnapshot(t, func(ns *structs.NodeService) {
@@ -871,6 +879,35 @@ const customListenerJSONTpl = `{
 	]
 }`
 
+const traceTpl = `{
+    "@type" : "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager.Tracing",
+    "provider" : {
+        "name" : "envoy.tracers.zipkin",
+        "typed_config" : {
+            "@type" : "type.googleapis.com/envoy.config.trace.v3.ZipkinConfig",
+            "collector_cluster" : "customcolector",
+            "collector_endpoint" : "/api/v2/spans",
+            "collector_endpoint_version" : "HTTP_JSON",
+            "shared_span_context" : false
+        }
+    },
+    "custom_tags" : [
+        {
+            "tag" : "custom_tag",
+            "request_header" : {
+                "name" : "x-tag",
+                "default_value" : ""
+            }
+        },
+        {
+            "tag" : "alloc_id",
+            "environment" : {
+                "name" : "NOMAD_ALLOC_ID"
+            }
+        }
+    ]
+}`
+
 type customHTTPListenerJSONOptions struct {
 	Name                      string
 	HTTPConnectionManagerName string
@@ -928,12 +965,20 @@ const customHTTPListenerJSONTpl = `{
 var (
 	customListenerJSONTemplate     = template.Must(template.New("").Parse(customListenerJSONTpl))
 	customHTTPListenerJSONTemplate = template.Must(template.New("").Parse(customHTTPListenerJSONTpl))
+	traceJSONTemplate              = template.Must(template.New("").Parse(traceTpl))
 )
 
 func customListenerJSON(t testinf.T, opts customListenerJSONOptions) string {
 	t.Helper()
 	var buf bytes.Buffer
 	require.NoError(t, customListenerJSONTemplate.Execute(&buf, opts))
+	return buf.String()
+}
+
+func customTraceJSON(t testinf.T) string {
+	t.Helper()
+	var buf bytes.Buffer
+	require.NoError(t, traceJSONTemplate.Execute(&buf, nil))
 	return buf.String()
 }
 
