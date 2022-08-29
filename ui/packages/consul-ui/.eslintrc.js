@@ -14,7 +14,7 @@ module.exports = {
     browser: true,
   },
   rules: {
-    'no-console': ['error', {allow: ['error', 'info']}],
+    'no-console': ['error', { allow: ['error', 'info'] }],
     'no-unused-vars': ['error', { args: 'none' }],
     'ember/no-new-mixins': ['warn'],
     'ember/no-jquery': 'warn',
@@ -25,6 +25,7 @@ module.exports = {
     {
       files: [
         '.eslintrc.js',
+        'tailwind.config.js',
         '.dev.eslintrc.js',
         '.docfy-config.js',
         '.template-lintrc.js',
