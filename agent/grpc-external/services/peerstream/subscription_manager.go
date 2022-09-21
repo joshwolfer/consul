@@ -806,12 +806,9 @@ func (m *subscriptionManager) notifyMeshConfigUpdates(ctx context.Context) <-cha
 
 func (m *subscriptionManager) notifyServerMeshGatewayAddresses(ctx context.Context, updateCh chan<- cache.UpdateEvent) {
 	m.syncViaBlockingQuery(ctx, "mesh-gateways", func(ctx context.Context, store StateStore, ws memdb.WatchSet) (interface{}, error) {
-		idx, nodes, err := store.ServiceDump(ws, structs.ServiceKindMeshGateway, true, acl.DefaultEnterpriseMeta(), structs.DefaultPeerKeyword)
+		_, nodes, err := store.ServiceDump(ws, structs.ServiceKindMeshGateway, true, acl.DefaultEnterpriseMeta(), structs.DefaultPeerKeyword)
 		if err != nil {
 			return nil, fmt.Errorf("failed to watch mesh gateways services for servers: %w", err)
-		}
-		if idx == 0 {
-			idx = 1
 		}
 
 		var gatewayAddrs []string

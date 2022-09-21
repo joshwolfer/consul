@@ -50,17 +50,9 @@ func TestSubscriptionManager_RegisterDeregister(t *testing.T) {
 	subCh := mgr.subscribe(ctx, id, "my-peering", partition)
 
 	var (
-		gatewayCorrID = subMeshGateway + partition
-
-		mysqlCorrID = subExportedService + structs.NewServiceName("mysql", nil).String()
-
+		mysqlCorrID      = subExportedService + structs.NewServiceName("mysql", nil).String()
 		mysqlProxyCorrID = subExportedService + structs.NewServiceName("mysql-sidecar-proxy", nil).String()
 	)
-
-	// Expect just the empty mesh gateway event to replicate.
-	expectEvents(t, subCh, func(t *testing.T, got cache.UpdateEvent) {
-		checkEvent(t, got, gatewayCorrID, 0)
-	})
 
 	// Initially add in L4 failover so that later we can test removing it. We
 	// cannot do the other way around because it would fail validation to
@@ -293,17 +285,6 @@ func TestSubscriptionManager_RegisterDeregister(t *testing.T) {
 					},
 				}, res.Nodes[0])
 			},
-			func(t *testing.T, got cache.UpdateEvent) {
-				require.Equal(t, gatewayCorrID, got.CorrelationID)
-				res := got.Result.(*pbservice.IndexedCheckServiceNodes)
-				require.Equal(t, uint64(0), res.Index)
-
-				require.Len(t, res.Nodes, 1)
-				prototest.AssertDeepEqual(t, &pbservice.CheckServiceNode{
-					Node:    pbNode("mgw", "10.1.1.1", partition),
-					Service: pbService("mesh-gateway", "gateway-1", "gateway", 8443, nil),
-				}, res.Nodes[0])
-			},
 		)
 	})
 
@@ -429,13 +410,6 @@ func TestSubscriptionManager_RegisterDeregister(t *testing.T) {
 
 				require.Len(t, res.Nodes, 0)
 			},
-			func(t *testing.T, got cache.UpdateEvent) {
-				require.Equal(t, gatewayCorrID, got.CorrelationID)
-				res := got.Result.(*pbservice.IndexedCheckServiceNodes)
-				require.Equal(t, uint64(0), res.Index)
-
-				require.Len(t, res.Nodes, 0)
-			},
 		)
 	})
 }
@@ -479,8 +453,6 @@ func TestSubscriptionManager_InitialSnapshot(t *testing.T) {
 	backend.ensureService(t, "zip", mongo.Service)
 
 	var (
-		gatewayCorrID = subMeshGateway + partition
-
 		mysqlCorrID = subExportedService + structs.NewServiceName("mysql", nil).String()
 		mongoCorrID = subExportedService + structs.NewServiceName("mongo", nil).String()
 		chainCorrID = subExportedService + structs.NewServiceName("chain", nil).String()
@@ -489,11 +461,6 @@ func TestSubscriptionManager_InitialSnapshot(t *testing.T) {
 		mongoProxyCorrID = subExportedService + structs.NewServiceName("mongo-sidecar-proxy", nil).String()
 		chainProxyCorrID = subExportedService + structs.NewServiceName("chain-sidecar-proxy", nil).String()
 	)
-
-	// Expect just the empty mesh gateway event to replicate.
-	expectEvents(t, subCh, func(t *testing.T, got cache.UpdateEvent) {
-		checkEvent(t, got, gatewayCorrID, 0)
-	})
 
 	// At this point in time we'll have a mesh-gateway notification with no
 	// content stored and handled.
@@ -562,9 +529,6 @@ func TestSubscriptionManager_InitialSnapshot(t *testing.T) {
 			},
 			func(t *testing.T, got cache.UpdateEvent) {
 				checkEvent(t, got, mysqlProxyCorrID, 1, "mysql-sidecar-proxy", string(structs.ServiceKindConnectProxy))
-			},
-			func(t *testing.T, got cache.UpdateEvent) {
-				checkEvent(t, got, gatewayCorrID, 1, "gateway", string(structs.ServiceKindMeshGateway))
 			},
 		)
 	})
