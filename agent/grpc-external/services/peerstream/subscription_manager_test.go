@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/consul/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
@@ -703,6 +704,102 @@ func TestSubscriptionManager_ServerAddrs(t *testing.T) {
 				require.True(t, ok)
 
 				require.Equal(t, []string{"198.18.0.1:8502", "198.18.0.2:9502"}, addrs.GetAddresses())
+			},
+		)
+	})
+
+	testutil.RunStep(t, "flipped to peering through mesh gateways", func(t *testing.T) {
+		require.NoError(t, backend.store.EnsureConfigEntry(1, &structs.MeshConfigEntry{
+			Peering: &structs.PeeringMeshConfig{
+				PeerThroughMeshGateways: true,
+			},
+		}))
+
+		select {
+		case <-time.After(100 * time.Millisecond):
+		case <-subCh:
+			t.Fatal("expected to time out: no mesh gateways are registered")
+		}
+	})
+
+	testutil.RunStep(t, "registered and received a mesh gateway", func(t *testing.T) {
+		reg := structs.RegisterRequest{
+			ID:      types.NodeID("b5489ca9-f5e9-4dba-a779-61fec4e8e364"),
+			Node:    "gw-node",
+			Address: "1.2.3.4",
+			TaggedAddresses: map[string]string{
+				structs.TaggedAddressWAN: "172.217.22.14",
+			},
+			Service: &structs.NodeService{
+				ID:      "mesh-gateway",
+				Service: "mesh-gateway",
+				Kind:    structs.ServiceKindMeshGateway,
+				Port:    443,
+				TaggedAddresses: map[string]structs.ServiceAddress{
+					structs.TaggedAddressWAN: {Address: "154.238.12.252", Port: 8443},
+				},
+			},
+		}
+		require.NoError(t, backend.store.EnsureRegistration(2, &reg))
+
+		expectEvents(t, subCh,
+			func(t *testing.T, got cache.UpdateEvent) {
+				require.Equal(t, subServerAddrs, got.CorrelationID)
+
+				addrs, ok := got.Result.(*pbpeering.PeeringServerAddresses)
+				require.True(t, ok)
+
+				require.Equal(t, []string{"154.238.12.252:8443"}, addrs.GetAddresses())
+			},
+		)
+	})
+
+	testutil.RunStep(t, "registered and received a second mesh gateway", func(t *testing.T) {
+		reg := structs.RegisterRequest{
+			ID:      types.NodeID("e4cc0af3-5c09-4ddf-94a9-5840e427bc45"),
+			Node:    "gw-node-2",
+			Address: "1.2.3.5",
+			TaggedAddresses: map[string]string{
+				structs.TaggedAddressWAN: "172.217.22.15",
+			},
+			Service: &structs.NodeService{
+				ID:      "mesh-gateway",
+				Service: "mesh-gateway",
+				Kind:    structs.ServiceKindMeshGateway,
+				Port:    443,
+			},
+		}
+		require.NoError(t, backend.store.EnsureRegistration(3, &reg))
+
+		expectEvents(t, subCh,
+			func(t *testing.T, got cache.UpdateEvent) {
+				require.Equal(t, subServerAddrs, got.CorrelationID)
+
+				addrs, ok := got.Result.(*pbpeering.PeeringServerAddresses)
+				require.True(t, ok)
+
+				require.Equal(t, []string{"154.238.12.252:8443", "172.217.22.15:443"}, addrs.GetAddresses())
+			},
+		)
+	})
+
+	testutil.RunStep(t, "disabled peering through gateways and received server addresses", func(t *testing.T) {
+		require.NoError(t, backend.store.EnsureConfigEntry(4, &structs.MeshConfigEntry{
+			Peering: &structs.PeeringMeshConfig{
+				PeerThroughMeshGateways: false,
+			},
+		}))
+
+		expectEvents(t, subCh,
+			func(t *testing.T, got cache.UpdateEvent) {
+				require.Equal(t, subServerAddrs, got.CorrelationID)
+
+				addrs, ok := got.Result.(*pbpeering.PeeringServerAddresses)
+				require.True(t, ok)
+
+				// New subscriptions receive a snapshot from the event publisher.
+				// At the start of the test the handler registered a mock that only returns a single address.
+				require.Equal(t, []string{"198.18.0.1:8502"}, addrs.GetAddresses())
 			},
 		)
 	})
