@@ -632,9 +632,6 @@ func (s *Server) realHandleStream(streamReq HandleStreamRequest) error {
 					continue
 				}
 
-			case strings.HasPrefix(update.CorrelationID, subMeshGateway):
-				// TODO(Peering): figure out how to sync this separately
-
 			case update.CorrelationID == subCARoot:
 				resp, err = makeCARootsResponse(update)
 				if err != nil {
